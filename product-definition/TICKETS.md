@@ -5,8 +5,9 @@ see the critical path at a glance.
 
 ---
 
-## Ticket 1: Project Scaffolding
+## Ticket 1: Project Scaffolding ✅
 
+**Status**: DONE
 **Priority**: P0
 **Blocked by**: —
 **Blocks**: All other tickets

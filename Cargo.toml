@@ -1,0 +1,13 @@
+[package]
+name = "ghostty-themer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.28"
+image = "0.25"
+kmeans_colors = { version = "0.6", features = ["palette_color"] }
+palette = "0.7"
+ratatui = "0.29"
