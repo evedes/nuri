@@ -74,8 +74,9 @@ Define the core color types used throughout the pipeline and conversion utilitie
 
 ---
 
-## Ticket 3: Image Loading & Pre-processing
+## Ticket 3: Image Loading & Pre-processing ✅
 
+**Status**: DONE
 **Priority**: P0
 **Blocked by**: Ticket 2
 **Blocks**: Ticket 4
