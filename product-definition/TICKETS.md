@@ -200,8 +200,9 @@ Adjust palette colors to meet WCAG contrast minimums.
 
 ---
 
-## Ticket 8: Ghostty Theme Serialization
+## Ticket 8: Ghostty Theme Serialization ✅
 
+**Status**: DONE
 **Priority**: P0
 **Blocked by**: Ticket 6
 **Blocks**: Ticket 9
