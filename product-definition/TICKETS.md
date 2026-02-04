@@ -121,8 +121,9 @@ Extract dominant colors from the prepared pixel data.
 
 ---
 
-## Ticket 5: Dark/Light Mode Detection
+## Ticket 5: Dark/Light Mode Detection ✅
 
+**Status**: DONE
 **Priority**: P1
 **Blocked by**: Ticket 4
 **Blocks**: Ticket 6
