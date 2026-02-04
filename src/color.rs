@@ -16,6 +16,7 @@ impl Color {
     }
 
     /// Parse a hex color string like `#ff8800` or `#FF8800`.
+    #[allow(dead_code)]
     pub fn from_hex(hex: &str) -> Result<Self> {
         let hex = hex.strip_prefix('#').unwrap_or(hex);
         if hex.len() != 6 {
@@ -41,6 +42,7 @@ impl Color {
     }
 
     /// Create from `palette::Srgb<u8>`.
+    #[allow(dead_code)]
     pub fn from_srgb_u8(srgb: Srgb<u8>) -> Self {
         Self {
             r: srgb.red,
@@ -119,6 +121,7 @@ impl Color {
 
     /// Adjust Oklch chroma by `delta`. Positive = more saturated, negative = less.
     /// Chroma is clamped to [0, 0.4].
+    #[allow(dead_code)]
     pub fn adjust_chroma(self, delta: f32) -> Color {
         let mut oklch = self.to_oklch();
         oklch.chroma = (oklch.chroma + delta).clamp(0.0, 0.4);

@@ -22,7 +22,7 @@ pub struct Args {
     pub output: Option<PathBuf>,
 
     /// Install theme to ~/.config/ghostty/themes/
-    #[arg(long)]
+    #[arg(long, conflicts_with = "output")]
     pub install: bool,
 
     /// Print a colored terminal preview of the palette

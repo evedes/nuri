@@ -19,6 +19,7 @@ pub struct TuiApp {
 }
 
 /// Launch the TUI application.
+#[allow(dead_code)]
 pub fn run(_app: TuiApp) -> Result<()> {
     todo!("Ticket 11: TUI app shell and event loop")
 }

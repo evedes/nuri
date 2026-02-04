@@ -239,8 +239,9 @@ Serialize an `AnsiPalette` to the Ghostty theme file format.
 
 ---
 
-## Ticket 9: CLI Interface
+## Ticket 9: CLI Interface ✅
 
+**Status**: DONE
 **Priority**: P0
 **Blocked by**: Tickets 7, 8
 **Blocks**: Tickets 10, 12
