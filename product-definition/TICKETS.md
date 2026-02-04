@@ -98,8 +98,9 @@ Load an image, resize it, and convert pixels to LAB for extraction.
 
 ---
 
-## Ticket 4: K-Means Color Extraction
+## Ticket 4: K-Means Color Extraction ✅
 
+**Status**: DONE
 **Priority**: P0
 **Blocked by**: Ticket 3
 **Blocks**: Tickets 5, 6
