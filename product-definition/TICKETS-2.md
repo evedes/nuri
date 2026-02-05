@@ -59,9 +59,9 @@ Define the `ThemeBackend` trait and create the `backends/` module structure.
 
 ---
 
-## Ticket 19: Extract Ghostty Backend
+## Ticket 19: Extract Ghostty Backend ✅
 
-**Status**: TODO
+**Status**: DONE
 **Priority**: P0
 **Blocked by**: 18
 **Blocks**: 20, 23

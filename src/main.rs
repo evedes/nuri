@@ -1,12 +1,13 @@
 use anyhow::{bail, Result};
 use clap::Parser;
 
+use nuri::backends::ghostty::{self, GhosttyBackend};
+use nuri::backends::ThemeBackend;
 use nuri::cli::Args;
 use nuri::pipeline::assign::assign_slots;
 use nuri::pipeline::contrast::enforce_contrast;
 use nuri::pipeline::detect::detect_mode;
 use nuri::pipeline::extract::{extract_colors, load_and_prepare};
-use nuri::theme::GhosttyTheme;
 use nuri::{preview, tui};
 
 fn main() -> Result<()> {
@@ -58,16 +59,16 @@ fn main() -> Result<()> {
     }
 
     // 8. CLI mode: build theme and output
-    let theme = GhosttyTheme::from_palette(palette);
+    let backend = GhosttyBackend;
 
     if args.preview {
-        preview::print_preview(&theme.palette);
+        preview::print_preview(&palette);
     }
 
     if args.install {
         // Check --no-clobber
         if args.no_clobber {
-            let theme_path = GhosttyTheme::theme_path(&name)?;
+            let theme_path = ghostty::theme_path(&name)?;
             if theme_path.exists() {
                 bail!(
                     "theme '{}' already exists at {}. Remove it first or omit --no-clobber.",
@@ -76,13 +77,13 @@ fn main() -> Result<()> {
                 );
             }
         }
-        theme.install(&name)?;
-        eprintln!("Installed theme '{name}' to ~/.config/ghostty/themes/{name}");
+        let installed_path = backend.install(&palette, &name)?;
+        eprintln!("Installed theme '{name}' to {}", installed_path.display());
     } else if let Some(ref path) = args.output {
-        theme.write_to(path)?;
+        backend.write_to(&palette, &name, path)?;
         eprintln!("Wrote theme to {}", path.display());
     } else {
-        print!("{}", theme.serialize());
+        print!("{}", backend.serialize(&palette, &name));
     }
 
     Ok(())

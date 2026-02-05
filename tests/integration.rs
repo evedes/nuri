@@ -1,13 +1,14 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use nuri::backends::ghostty::GhosttyBackend;
+use nuri::backends::ThemeBackend;
 use nuri::cli::ThemeMode;
 use nuri::color::Color;
 use nuri::pipeline::assign::assign_slots;
 use nuri::pipeline::contrast::{enforce_contrast, DEFAULT_ACCENT_CONTRAST};
 use nuri::pipeline::detect::detect_mode;
 use nuri::pipeline::extract::{extract_colors, load_and_prepare};
-use nuri::theme::GhosttyTheme;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -101,7 +102,7 @@ fn run_pipeline(fixture_name: &str, mode: Option<ThemeMode>) -> String {
     let detected_mode = mode.unwrap_or_else(|| detect_mode(&pixels));
     let mut palette = assign_slots(&colors, detected_mode);
     enforce_contrast(&mut palette, DEFAULT_ACCENT_CONTRAST);
-    GhosttyTheme::from_palette(palette).serialize()
+    GhosttyBackend.serialize(&palette, "test")
 }
 
 /// Validate the structural correctness of a theme output string.
@@ -303,7 +304,7 @@ mod property_tests {
             let mode = detect_mode(&lab_pixels);
             let mut palette = assign_slots(&colors, mode);
             enforce_contrast(&mut palette, DEFAULT_ACCENT_CONTRAST);
-            let output = GhosttyTheme::from_palette(palette).serialize();
+            let output = GhosttyBackend.serialize(&palette, "test");
             let line_count = output.lines().count();
             prop_assert_eq!(line_count, 22, "expected 22 lines, got {}", line_count);
         }
@@ -315,7 +316,7 @@ mod property_tests {
             let mode = detect_mode(&lab_pixels);
             let mut palette = assign_slots(&colors, mode);
             enforce_contrast(&mut palette, DEFAULT_ACCENT_CONTRAST);
-            let output = GhosttyTheme::from_palette(palette).serialize();
+            let output = GhosttyBackend.serialize(&palette, "test");
 
             let hex_re = regex::Regex::new(r"#[0-9a-f]{6}").unwrap();
             for line in output.lines() {

@@ -14,11 +14,12 @@ use palette::Lab;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Clear, Paragraph};
 
+use crate::backends::ghostty::{self, GhosttyBackend};
+use crate::backends::ThemeBackend;
 use crate::cli::ThemeMode;
 use crate::pipeline::assign::{assign_slots, AnsiPalette};
 use crate::pipeline::contrast::{enforce_contrast, DEFAULT_ACCENT_CONTRAST};
 use crate::pipeline::extract::{extract_colors_with_seed, ExtractedColor};
-use crate::theme::GhosttyTheme;
 
 use self::widgets::{PaletteWidget, PreviewWidget};
 
@@ -318,7 +319,7 @@ fn try_save(app: &mut TuiApp) -> Result<()> {
         return Ok(());
     }
 
-    let path = GhosttyTheme::theme_path(&name)?;
+    let path = ghostty::theme_path(&name)?;
     if path.exists() {
         app.input_mode = InputMode::ConfirmOverwrite;
         return Ok(());
@@ -328,8 +329,8 @@ fn try_save(app: &mut TuiApp) -> Result<()> {
 }
 
 fn do_save(app: &mut TuiApp, name: &str) -> Result<()> {
-    let theme = GhosttyTheme::from_palette(app.palette.clone());
-    theme.install(name)?;
+    let backend = GhosttyBackend;
+    backend.install(&app.palette, name)?;
     app.theme_name = name.to_string();
     app.dirty = false;
     app.status_message = Some(format!("Saved theme '{name}'"));

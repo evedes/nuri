@@ -36,7 +36,11 @@ src/
     detect.rs          # Dark/light mode auto-detection
     assign.rs          # Hue-based ANSI slot assignment (Oklch)
     contrast.rs        # WCAG contrast enforcement
-  theme.rs             # GhosttyTheme struct, serialization, install
+  backends/
+    mod.rs             # ThemeBackend trait, Target enum, get_backend()
+    ghostty.rs         # Ghostty theme backend (serialize, install)
+    zellij.rs          # Zellij theme backend (stub)
+    neovim.rs          # Neovim colorscheme backend (stub)
   tui/
     mod.rs             # TUI app loop, event handling
     widgets.rs         # Custom ratatui widgets (palette, preview)
