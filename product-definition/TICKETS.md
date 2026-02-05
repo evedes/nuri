@@ -325,8 +325,9 @@ Set up the ratatui application skeleton for `--tui` mode.
 
 ---
 
-## Ticket 12: TUI — Palette View Widget
+## Ticket 12: TUI — Palette View Widget ✅
 
+**Status**: DONE
 **Priority**: P1
 **Blocked by**: Ticket 11
 **Blocks**: Ticket 14
