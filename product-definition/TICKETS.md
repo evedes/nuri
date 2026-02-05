@@ -346,8 +346,9 @@ Render the 16-color palette as interactive swatches.
 
 ---
 
-## Ticket 13: TUI — Terminal Preview Pane
+## Ticket 13: TUI — Terminal Preview Pane ✅
 
+**Status**: DONE
 **Priority**: P2
 **Blocked by**: Ticket 11
 **Blocks**: —
