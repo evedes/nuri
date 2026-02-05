@@ -25,6 +25,13 @@ pub fn load_and_prepare(path: &Path) -> Result<Vec<Lab>> {
     let img = image::open(path).with_context(|| {
         if !path.exists() {
             format!("file not found: {}", path.display())
+        } else if path.metadata().map(|m| m.permissions().readonly()).unwrap_or(false)
+            || std::fs::File::open(path).is_err()
+        {
+            format!(
+                "permission denied: cannot read {}. Check file permissions.",
+                path.display()
+            )
         } else {
             format!(
                 "unsupported or corrupt image: {}. Supported formats: PNG, JPEG, WebP, BMP, TIFF, GIF",

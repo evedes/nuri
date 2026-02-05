@@ -16,7 +16,7 @@ use ratatui::widgets::{Block, Clear, Paragraph};
 
 use crate::cli::ThemeMode;
 use crate::pipeline::assign::{assign_slots, AnsiPalette};
-use crate::pipeline::contrast::enforce_contrast;
+use crate::pipeline::contrast::{enforce_contrast, DEFAULT_ACCENT_CONTRAST};
 use crate::pipeline::extract::{extract_colors_with_seed, ExtractedColor};
 use crate::theme::GhosttyTheme;
 
@@ -226,7 +226,7 @@ fn switch_mode(app: &mut TuiApp, mode: ThemeMode) {
     }
     app.mode = mode;
     app.palette = assign_slots(&app.extracted_colors, app.mode);
-    enforce_contrast(&mut app.palette);
+    enforce_contrast(&mut app.palette, DEFAULT_ACCENT_CONTRAST);
     app.dirty = true;
     app.selected_slot = None;
     app.status_message = Some(format!("Switched to {mode:?} mode"));
@@ -236,7 +236,7 @@ fn regenerate(app: &mut TuiApp) {
     app.seed = app.seed.wrapping_add(1);
     app.extracted_colors = extract_colors_with_seed(&app.pixels, app.k, app.seed);
     app.palette = assign_slots(&app.extracted_colors, app.mode);
-    enforce_contrast(&mut app.palette);
+    enforce_contrast(&mut app.palette, DEFAULT_ACCENT_CONTRAST);
     app.dirty = true;
     app.selected_slot = None;
     app.status_message = Some("Regenerated palette".to_string());
@@ -302,7 +302,7 @@ fn cycle_candidate(app: &mut TuiApp, forward: bool) {
 fn recompute_after_tweak(app: &mut TuiApp) {
     app.palette.background = app.palette.slots[0];
     app.palette.cursor_text = app.palette.background;
-    enforce_contrast(&mut app.palette);
+    enforce_contrast(&mut app.palette, DEFAULT_ACCENT_CONTRAST);
     app.dirty = true;
 }
 

@@ -40,6 +40,10 @@ pub struct Args {
     /// Minimum accent contrast ratio against background
     #[arg(long, default_value_t = 4.5)]
     pub min_contrast: f32,
+
+    /// Error instead of overwriting when installing an existing theme
+    #[arg(long)]
+    pub no_clobber: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]

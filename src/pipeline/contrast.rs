@@ -16,12 +16,17 @@ const L_STEP: f32 = 0.01;
 /// Maximum adjustment iterations to prevent infinite loops.
 const MAX_ITERATIONS: usize = 100;
 
+/// Default minimum contrast ratio for accent colors.
+pub const DEFAULT_ACCENT_CONTRAST: f32 = ACCENT_MIN_CONTRAST;
+
 /// Adjust palette colors to meet WCAG contrast minimums against the background.
 ///
 /// Only Oklch lightness is adjusted — hue and chroma are preserved.
 /// Direction is inferred from background luminance: lighten for dark themes,
 /// darken for light themes.
-pub fn enforce_contrast(palette: &mut AnsiPalette) {
+///
+/// `accent_min` overrides the accent contrast threshold (default 4.5:1).
+pub fn enforce_contrast(palette: &mut AnsiPalette, accent_min: f32) {
     let bg = palette.background;
     let l_direction = if bg.relative_luminance() < 0.5 {
         L_STEP
@@ -29,10 +34,9 @@ pub fn enforce_contrast(palette: &mut AnsiPalette) {
         -L_STEP
     };
 
-    // Accent colors (slots 1-6, 9-14) vs background: ≥ 4.5:1
+    // Accent colors (slots 1-6, 9-14) vs background: ≥ accent_min
     for slot in (1..=6).chain(9..=14) {
-        palette.slots[slot] =
-            adjust_to_contrast(palette.slots[slot], bg, ACCENT_MIN_CONTRAST, l_direction);
+        palette.slots[slot] = adjust_to_contrast(palette.slots[slot], bg, accent_min, l_direction);
     }
 
     // Foreground (slot 15) vs background: ≥ 7:1
@@ -92,7 +96,7 @@ mod tests {
         let red_before = palette.slots[1];
         let ratio_before = Color::contrast_ratio(&red_before, &palette.background);
 
-        enforce_contrast(&mut palette);
+        enforce_contrast(&mut palette, ACCENT_MIN_CONTRAST);
         let ratio_after = Color::contrast_ratio(&palette.slots[1], &palette.background);
 
         // Contrast should have improved
@@ -123,7 +127,7 @@ mod tests {
         let mut palette = assign_slots(&colors, ThemeMode::Dark);
         let slots_before = palette.slots;
 
-        enforce_contrast(&mut palette);
+        enforce_contrast(&mut palette, ACCENT_MIN_CONTRAST);
 
         // Check which slots changed (some might need no adjustment)
         for slot in (1..=6).chain(9..=14) {
@@ -172,7 +176,7 @@ mod tests {
         for (case_idx, colors) in test_cases.into_iter().enumerate() {
             for mode in [ThemeMode::Dark, ThemeMode::Light] {
                 let mut palette = assign_slots(&colors, mode);
-                enforce_contrast(&mut palette);
+                enforce_contrast(&mut palette, ACCENT_MIN_CONTRAST);
 
                 let bg = palette.background;
 
@@ -220,7 +224,7 @@ mod tests {
             .map(|i| f32::from(palette.slots[i].to_oklch().hue))
             .collect();
 
-        enforce_contrast(&mut palette);
+        enforce_contrast(&mut palette, ACCENT_MIN_CONTRAST);
 
         for (i, &hue_before) in (1..=6).zip(hues_before.iter()) {
             let hue_after = f32::from(palette.slots[i].to_oklch().hue);
@@ -242,7 +246,7 @@ mod tests {
         ];
 
         let mut palette = assign_slots(&colors, ThemeMode::Dark);
-        enforce_contrast(&mut palette);
+        enforce_contrast(&mut palette, ACCENT_MIN_CONTRAST);
 
         assert_eq!(
             palette.foreground, palette.slots[15],
