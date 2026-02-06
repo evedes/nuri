@@ -1,0 +1,15 @@
+themes {
+    test {
+        fg "#efe6df"
+        bg "#040b1a"
+        black "#040b1a"
+        red "#8e757a"
+        green "#697f72"
+        yellow "#837b66"
+        blue "#6e7c93"
+        magenta "#8e6f8d"
+        cyan "#6c7f83"
+        white "#d4ccc5"
+        orange "#8c776a"
+    }
+}

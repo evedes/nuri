@@ -237,9 +237,9 @@ Add a backend selection popup to the TUI save flow.
 
 ---
 
-## Ticket 24: Integration Tests
+## Ticket 24: Integration Tests ✅
 
-**Status**: TODO
+**Status**: DONE
 **Priority**: P1
 **Blocked by**: 20, 21, 22
 **Blocks**: —

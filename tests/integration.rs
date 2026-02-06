@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use nuri::backends::ghostty::GhosttyBackend;
-use nuri::backends::ThemeBackend;
+use nuri::backends::neovim::NeovimBackend;
+use nuri::backends::zellij::ZellijBackend;
+use nuri::backends::{get_backend, Target, ThemeBackend};
 use nuri::cli::ThemeMode;
 use nuri::color::Color;
 use nuri::pipeline::assign::assign_slots;
@@ -489,4 +491,375 @@ fn cli_unsupported_format_error() {
         stderr.contains("unsupported") || stderr.contains("Unsupported"),
         "expected unsupported format error, got: {stderr}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Multi-backend CLI tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn cli_default_target_is_ghostty() {
+    ensure_fixtures();
+    let bin = cargo_bin();
+    let output = Command::new(&bin)
+        .arg(fixture_dir().join("dark-photo.png"))
+        .output()
+        .expect("failed to run binary");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    validate_theme_structure(&stdout);
+}
+
+#[test]
+fn cli_target_ghostty_explicit() {
+    ensure_fixtures();
+    let bin = cargo_bin();
+    let output = Command::new(&bin)
+        .args([
+            fixture_dir().join("dark-photo.png").to_str().unwrap(),
+            "--target",
+            "ghostty",
+        ])
+        .output()
+        .expect("failed to run binary");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    validate_theme_structure(&stdout);
+}
+
+#[test]
+fn cli_target_zellij_stdout() {
+    ensure_fixtures();
+    let bin = cargo_bin();
+    let output = Command::new(&bin)
+        .args([
+            fixture_dir().join("dark-photo.png").to_str().unwrap(),
+            "--target",
+            "zellij",
+        ])
+        .output()
+        .expect("failed to run binary");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("themes {"),
+        "zellij output should contain KDL themes block"
+    );
+}
+
+#[test]
+fn cli_target_neovim_stdout() {
+    ensure_fixtures();
+    let bin = cargo_bin();
+    let output = Command::new(&bin)
+        .args([
+            fixture_dir().join("dark-photo.png").to_str().unwrap(),
+            "--target",
+            "neovim",
+        ])
+        .output()
+        .expect("failed to run binary");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("vim.g.colors_name"),
+        "neovim output should contain vim.g.colors_name"
+    );
+}
+
+#[test]
+fn cli_multiple_targets_no_install_errors() {
+    ensure_fixtures();
+    let bin = cargo_bin();
+    let output = Command::new(&bin)
+        .args([
+            fixture_dir().join("dark-photo.png").to_str().unwrap(),
+            "--target",
+            "ghostty,zellij",
+        ])
+        .output()
+        .expect("failed to run binary");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cannot output multiple targets"),
+        "expected multi-target error, got: {stderr}"
+    );
+}
+
+#[test]
+fn cli_multiple_targets_with_output_errors() {
+    ensure_fixtures();
+    let bin = cargo_bin();
+    let tmp = std::env::temp_dir().join("nuri_test_multi_output");
+    std::fs::create_dir_all(&tmp).unwrap();
+    let out_path = tmp.join("out.txt");
+
+    let output = Command::new(&bin)
+        .args([
+            fixture_dir().join("dark-photo.png").to_str().unwrap(),
+            "--target",
+            "ghostty,zellij",
+            "--output",
+            out_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run binary");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cannot use --output with multiple targets"),
+        "expected multi-target output error, got: {stderr}"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn cli_target_install_multiple() {
+    ensure_fixtures();
+    let bin = cargo_bin();
+    let tmp = std::env::temp_dir().join("nuri_test_multi_install");
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    let output = Command::new(&bin)
+        .env("XDG_CONFIG_HOME", &tmp)
+        .args([
+            fixture_dir().join("dark-photo.png").to_str().unwrap(),
+            "--target",
+            "ghostty,zellij,neovim",
+            "--install",
+        ])
+        .output()
+        .expect("failed to run binary");
+
+    assert!(
+        output.status.success(),
+        "multi-install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Check all three files exist
+    assert!(tmp.join("ghostty/themes/dark-photo").exists());
+    assert!(tmp.join("zellij/themes/dark-photo.kdl").exists());
+    assert!(tmp.join("nvim/colors/dark-photo.lua").exists());
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+// ---------------------------------------------------------------------------
+// Zellij & Neovim snapshot tests
+// ---------------------------------------------------------------------------
+
+fn run_pipeline_with_backend(fixture_name: &str, backend: &dyn ThemeBackend) -> String {
+    ensure_fixtures();
+    let path = fixture_dir().join(fixture_name);
+    let pixels = load_and_prepare(&path).unwrap();
+    let colors = extract_colors(&pixels, 16);
+    let detected_mode = detect_mode(&pixels);
+    let mut palette = assign_slots(&colors, detected_mode);
+    enforce_contrast(&mut palette, DEFAULT_ACCENT_CONTRAST);
+    backend.serialize(&palette, "test")
+}
+
+fn snapshot_test_backend(fixture: &str, backend: &dyn ThemeBackend, suffix: &str) {
+    let output = run_pipeline_with_backend(fixture, backend);
+
+    let snap_dir = snapshot_dir();
+    std::fs::create_dir_all(&snap_dir).unwrap();
+
+    let snap_name = format!("{}_{}.snap", suffix, fixture.replace('.', "_"));
+    let snap_path = snap_dir.join(&snap_name);
+
+    if std::env::var("UPDATE_SNAPSHOTS").is_ok() || !snap_path.exists() {
+        std::fs::write(&snap_path, &output).unwrap();
+        return;
+    }
+
+    let expected = std::fs::read_to_string(&snap_path).unwrap();
+    assert_eq!(
+        output, expected,
+        "snapshot mismatch for {suffix}/{fixture}. Run with UPDATE_SNAPSHOTS=1 to update."
+    );
+}
+
+#[test]
+fn snapshot_zellij_colorful() {
+    snapshot_test_backend("colorful.png", &ZellijBackend, "zellij");
+}
+
+#[test]
+fn snapshot_zellij_dark_photo() {
+    snapshot_test_backend("dark-photo.png", &ZellijBackend, "zellij");
+}
+
+#[test]
+fn snapshot_neovim_colorful() {
+    snapshot_test_backend("colorful.png", &NeovimBackend, "neovim");
+}
+
+#[test]
+fn snapshot_neovim_dark_photo() {
+    snapshot_test_backend("dark-photo.png", &NeovimBackend, "neovim");
+}
+
+// ---------------------------------------------------------------------------
+// Trait-level tests
+// ---------------------------------------------------------------------------
+
+fn make_test_palette() -> nuri::pipeline::assign::AnsiPalette {
+    use nuri::pipeline::extract::ExtractedColor;
+    use palette::Oklch;
+
+    let make = |l, c, h, w| ExtractedColor {
+        color: Color::from_oklch(Oklch::new(l, c, h)),
+        weight: w,
+    };
+    let colors = vec![
+        make(0.60, 0.20, 25.0, 0.12),
+        make(0.60, 0.20, 145.0, 0.12),
+        make(0.70, 0.20, 90.0, 0.12),
+        make(0.55, 0.20, 260.0, 0.12),
+        make(0.60, 0.20, 325.0, 0.12),
+        make(0.65, 0.20, 195.0, 0.10),
+        make(0.10, 0.01, 0.0, 0.15),
+        make(0.95, 0.01, 0.0, 0.15),
+    ];
+    assign_slots(&colors, ThemeMode::Dark)
+}
+
+#[test]
+fn all_backends_serialize_nonempty() {
+    let palette = make_test_palette();
+    for target in [Target::Ghostty, Target::Zellij, Target::Neovim] {
+        let backend = get_backend(target);
+        let output = backend.serialize(&palette, "test");
+        assert!(
+            !output.is_empty(),
+            "{} backend produced empty output",
+            backend.name()
+        );
+    }
+}
+
+#[test]
+fn all_backends_write_to_matches_serialize() {
+    let palette = make_test_palette();
+    let tmp = std::env::temp_dir().join("nuri_test_trait_write");
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    for (target, ext) in [
+        (Target::Ghostty, ""),
+        (Target::Zellij, ".kdl"),
+        (Target::Neovim, ".lua"),
+    ] {
+        let backend = get_backend(target);
+        let filename = format!("test{ext}");
+        let path = tmp.join(&filename);
+        backend.write_to(&palette, "test", &path).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            content,
+            backend.serialize(&palette, "test"),
+            "{} write_to content mismatch",
+            backend.name()
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn all_backends_install_creates_file() {
+    let palette = make_test_palette();
+    let tmp = std::env::temp_dir().join("nuri_test_trait_install");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::env::set_var("XDG_CONFIG_HOME", &tmp);
+
+    for target in [Target::Ghostty, Target::Zellij, Target::Neovim] {
+        let backend = get_backend(target);
+        let path = backend.install(&palette, "test_theme").unwrap();
+        assert!(
+            path.exists(),
+            "{} install did not create file",
+            backend.name()
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::env::remove_var("XDG_CONFIG_HOME");
+}
+
+// ---------------------------------------------------------------------------
+// Multi-backend property tests
+// ---------------------------------------------------------------------------
+
+mod multi_backend_property_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn arb_pixel_buffer() -> impl Strategy<Value = Vec<[u8; 3]>> {
+        (4u32..=16u32, 4u32..=16u32).prop_flat_map(|(w, h)| {
+            proptest::collection::vec(proptest::array::uniform3(0u8..=255u8), (w * h) as usize)
+        })
+    }
+
+    fn pixels_to_lab(pixels: &[[u8; 3]]) -> Vec<palette::Lab> {
+        use palette::{IntoColor, Srgb};
+        pixels
+            .iter()
+            .map(|p| {
+                let srgb: Srgb<f32> = Srgb::new(p[0], p[1], p[2]).into_format();
+                srgb.into_color()
+            })
+            .collect()
+    }
+
+    proptest! {
+        #[test]
+        fn all_backends_produce_nonempty(pixels in arb_pixel_buffer()) {
+            let lab_pixels = pixels_to_lab(&pixels);
+            let colors = extract_colors(&lab_pixels, 16);
+            let mode = detect_mode(&lab_pixels);
+            let mut palette = assign_slots(&colors, mode);
+            enforce_contrast(&mut palette, DEFAULT_ACCENT_CONTRAST);
+
+            for target in [Target::Ghostty, Target::Zellij, Target::Neovim] {
+                let backend = get_backend(target);
+                let output = backend.serialize(&palette, "test");
+                prop_assert!(!output.is_empty(), "{} produced empty output", backend.name());
+            }
+        }
+
+        #[test]
+        fn zellij_always_has_11_color_keys(pixels in arb_pixel_buffer()) {
+            let lab_pixels = pixels_to_lab(&pixels);
+            let colors = extract_colors(&lab_pixels, 16);
+            let mode = detect_mode(&lab_pixels);
+            let mut palette = assign_slots(&colors, mode);
+            enforce_contrast(&mut palette, DEFAULT_ACCENT_CONTRAST);
+
+            let output = ZellijBackend.serialize(&palette, "test");
+            let color_lines = output.lines().filter(|l| l.starts_with("        ")).count();
+            prop_assert_eq!(color_lines, 11, "expected 11 color lines, got {}", color_lines);
+        }
+
+        #[test]
+        fn neovim_always_has_colors_name(pixels in arb_pixel_buffer()) {
+            let lab_pixels = pixels_to_lab(&pixels);
+            let colors = extract_colors(&lab_pixels, 16);
+            let mode = detect_mode(&lab_pixels);
+            let mut palette = assign_slots(&colors, mode);
+            enforce_contrast(&mut palette, DEFAULT_ACCENT_CONTRAST);
+
+            let output = NeovimBackend.serialize(&palette, "test");
+            prop_assert!(output.contains("vim.g.colors_name"), "missing vim.g.colors_name");
+        }
+    }
 }
