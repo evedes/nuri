@@ -115,9 +115,9 @@ Add the `--target` CLI flag and wire up multi-backend dispatch in `main.rs`.
 
 ---
 
-## Ticket 21: Zellij Backend
+## Ticket 21: Zellij Backend ✅
 
-**Status**: TODO
+**Status**: DONE
 **Priority**: P1
 **Blocked by**: 18
 **Blocks**: 23, 24
