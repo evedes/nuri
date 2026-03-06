@@ -15,8 +15,8 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Clear, Paragraph};
 
 use crate::backends::{get_backend, Target};
-use crate::cli::ThemeMode;
-use crate::pipeline::assign::{assign_slots, AnsiPalette};
+use crate::cli::{AccentColor, AccentVariant, ThemeMode};
+use crate::pipeline::assign::{assign_slots_with_accent, preview_monochromatic, AnsiPalette};
 use crate::pipeline::contrast::{enforce_contrast, DEFAULT_ACCENT_CONTRAST};
 use crate::pipeline::extract::{extract_colors_with_seed, ExtractedColor};
 
@@ -26,6 +26,7 @@ use self::widgets::{PaletteWidget, PreviewWidget};
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum InputMode {
     Normal,
+    AccentSelect,
     BackendSelect,
     NameInput,
     ConfirmQuit,
@@ -52,6 +53,10 @@ pub struct TuiApp {
     cli_targets: Vec<Target>,
     /// Backend selection state for the picker popup.
     selected_backends: [bool; 3],
+    /// Monochromatic accent color (None = normal multi-hue mode).
+    accent: Option<AccentColor>,
+    /// Style variant for accent mode.
+    accent_variant: AccentVariant,
 }
 
 impl TuiApp {
@@ -81,12 +86,19 @@ impl TuiApp {
             seed: 42,
             cli_targets: Vec::new(),
             selected_backends: [true, false, false],
+            accent: None,
+            accent_variant: AccentVariant::Vibrant,
         }
     }
 
     /// Set targets from the CLI --target flag.
     pub fn set_targets(&mut self, targets: Vec<Target>) {
         self.cli_targets = targets;
+    }
+
+    /// Set the monochromatic accent color.
+    pub fn set_accent(&mut self, accent: Option<AccentColor>) {
+        self.accent = accent;
     }
 }
 
@@ -118,6 +130,9 @@ fn run_event_loop(
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match app.input_mode {
+                        InputMode::AccentSelect => {
+                            handle_accent_select(app, key.code);
+                        }
                         InputMode::BackendSelect => {
                             handle_backend_select(app, key.code);
                         }
@@ -196,6 +211,7 @@ fn handle_normal_input(app: &mut TuiApp, code: KeyCode) -> bool {
         }
         KeyCode::Char('d') => switch_mode(app, ThemeMode::Dark),
         KeyCode::Char('l') => switch_mode(app, ThemeMode::Light),
+        KeyCode::Char('a') => app.input_mode = InputMode::AccentSelect,
         KeyCode::Char('r') => regenerate(app),
         KeyCode::Char('+') | KeyCode::Char('=') => adjust_lightness(app, 0.02),
         KeyCode::Char('-') => adjust_lightness(app, -0.02),
@@ -268,17 +284,91 @@ fn switch_mode(app: &mut TuiApp, mode: ThemeMode) {
         return;
     }
     app.mode = mode;
-    app.palette = assign_slots(&app.extracted_colors, app.mode);
+    app.palette = assign_slots_with_accent(
+        &app.extracted_colors,
+        app.mode,
+        app.accent,
+        app.accent_variant,
+    );
     enforce_contrast(&mut app.palette, DEFAULT_ACCENT_CONTRAST);
     app.dirty = true;
     app.selected_slot = None;
     app.status_message = Some(format!("Switched to {mode:?} mode"));
 }
 
+/// Key mapping for accent select overlay: (key, accent, variant).
+const ACCENT_OPTIONS: [(char, AccentColor, AccentVariant); 20] = [
+    ('a', AccentColor::Blue, AccentVariant::Vibrant),
+    ('b', AccentColor::Blue, AccentVariant::Muted),
+    ('c', AccentColor::Blue, AccentVariant::Dark),
+    ('d', AccentColor::Blue, AccentVariant::Pastel),
+    ('e', AccentColor::Green, AccentVariant::Vibrant),
+    ('f', AccentColor::Green, AccentVariant::Muted),
+    ('g', AccentColor::Green, AccentVariant::Dark),
+    ('h', AccentColor::Green, AccentVariant::Pastel),
+    ('i', AccentColor::Yellow, AccentVariant::Vibrant),
+    ('j', AccentColor::Yellow, AccentVariant::Muted),
+    ('k', AccentColor::Yellow, AccentVariant::Dark),
+    ('l', AccentColor::Yellow, AccentVariant::Pastel),
+    ('n', AccentColor::Red, AccentVariant::Vibrant),
+    ('o', AccentColor::Red, AccentVariant::Muted),
+    ('p', AccentColor::Red, AccentVariant::Dark),
+    ('r', AccentColor::Red, AccentVariant::Pastel),
+    ('t', AccentColor::Purple, AccentVariant::Vibrant),
+    ('u', AccentColor::Purple, AccentVariant::Muted),
+    ('v', AccentColor::Purple, AccentVariant::Dark),
+    ('w', AccentColor::Purple, AccentVariant::Pastel),
+];
+
+/// Gray accent uses a separate key since variants don't affect it.
+const GRAY_ACCENT_KEY: char = 'm';
+
+fn apply_accent(app: &mut TuiApp, accent: Option<AccentColor>, variant: AccentVariant) {
+    app.accent = accent;
+    app.accent_variant = variant;
+    app.palette = assign_slots_with_accent(
+        &app.extracted_colors,
+        app.mode,
+        app.accent,
+        app.accent_variant,
+    );
+    enforce_contrast(&mut app.palette, DEFAULT_ACCENT_CONTRAST);
+    app.dirty = true;
+    app.selected_slot = None;
+}
+
+fn handle_accent_select(app: &mut TuiApp, code: KeyCode) {
+    match code {
+        KeyCode::Esc | KeyCode::Char('0') => {
+            apply_accent(app, None, AccentVariant::Vibrant);
+            app.status_message = Some("Accent: Off".to_string());
+            app.input_mode = InputMode::Normal;
+        }
+        KeyCode::Char(c) if c == GRAY_ACCENT_KEY => {
+            apply_accent(app, Some(AccentColor::Gray), AccentVariant::Vibrant);
+            app.status_message = Some("Accent: Gray".to_string());
+            app.input_mode = InputMode::Normal;
+        }
+        KeyCode::Char(c) => {
+            if let Some(&(_, accent, variant)) = ACCENT_OPTIONS.iter().find(|(k, _, _)| *k == c) {
+                apply_accent(app, Some(accent), variant);
+                app.status_message = Some(format!("Accent: {:?} {}", accent, variant.label()));
+                app.input_mode = InputMode::Normal;
+            }
+        }
+        _ => {}
+    }
+}
+
 fn regenerate(app: &mut TuiApp) {
     app.seed = app.seed.wrapping_add(1);
     app.extracted_colors = extract_colors_with_seed(&app.pixels, app.k, app.seed);
-    app.palette = assign_slots(&app.extracted_colors, app.mode);
+    app.palette = assign_slots_with_accent(
+        &app.extracted_colors,
+        app.mode,
+        app.accent,
+        app.accent_variant,
+    );
     enforce_contrast(&mut app.palette, DEFAULT_ACCENT_CONTRAST);
     app.dirty = true;
     app.selected_slot = None;
@@ -450,6 +540,7 @@ fn do_save(app: &mut TuiApp) -> Result<()> {
 
     app.theme_name = theme_name;
     app.dirty = false;
+    app.input_mode = InputMode::Normal;
 
     if errors.is_empty() {
         let msg = saved.join(", ");
@@ -499,6 +590,7 @@ fn draw(f: &mut Frame, app: &TuiApp) {
                 draw_help_overlay(f);
             }
         }
+        InputMode::AccentSelect => draw_accent_select_overlay(f, app),
         InputMode::BackendSelect => draw_backend_select_overlay(f, app),
         InputMode::NameInput => draw_name_input_overlay(f, app),
         InputMode::ConfirmQuit => draw_confirm_quit_overlay(f),
@@ -513,11 +605,16 @@ fn draw_image_pane(f: &mut Frame, app: &TuiApp, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
+    let accent_label = match app.accent {
+        Some(c) => format!("{:?} {}", c, app.accent_variant.label()),
+        None => "Off".to_string(),
+    };
     let mut lines = vec![
         Line::from(""),
         Line::from(format!("  {}", app.image_path.display())),
         Line::from(""),
         Line::from(format!("  Mode: {:?}", app.mode)),
+        Line::from(format!("  Accent: {}", accent_label)),
         Line::from(format!("  Theme: {}", app.theme_name)),
         Line::from(format!("  Colors: {}", app.extracted_colors.len())),
         Line::from(""),
@@ -554,7 +651,7 @@ fn draw_status_bar(f: &mut Frame, app: &TuiApp, area: Rect) {
     } else if app.selected_slot.is_some() {
         " +/-: Lightness | s/S: Chroma | Left/Right: Cycle | Enter: Save | q: Quit".to_string()
     } else {
-        " d/l: Mode | r: Regen | Tab: Cycle | 1-6: Select | Enter: Save | ?: Help | q: Quit"
+        " d/l: Mode | a: Accent | r: Regen | Tab: Cycle | 1-6: Select | Enter: Save | ?: Help | q: Quit"
             .to_string()
     };
     let bar = Paragraph::new(text).style(
@@ -578,6 +675,7 @@ fn draw_help_overlay(f: &mut Frame) {
         Line::from("  1-6           Select accent slot"),
         Line::from("  Esc           Deselect / close"),
         Line::from("  d / l         Switch to dark / light mode"),
+        Line::from("  a             Cycle accent (off → blue → green → yellow)"),
         Line::from("  r             Regenerate palette (new seed)"),
         Line::from("  Enter         Save theme"),
         Line::from(""),
@@ -650,6 +748,101 @@ fn draw_confirm_overwrite_overlay(f: &mut Frame, path: &str) {
     ];
     let popup = Paragraph::new(lines)
         .block(Block::bordered().title(" Confirm Overwrite "))
+        .style(Style::default().bg(Color::Black).fg(Color::White));
+    f.render_widget(Clear, area);
+    f.render_widget(popup, area);
+}
+
+/// Build a compact swatch span for one accent variant: "[k] Label ██ ██ ██ ██ ██ ██"
+fn accent_swatch_spans(
+    key: char,
+    accent: AccentColor,
+    variant: AccentVariant,
+    mode: ThemeMode,
+    is_selected: bool,
+) -> Vec<Span<'static>> {
+    let preview = preview_monochromatic(accent, variant, mode);
+    let mut spans = vec![Span::raw(format!("[{key}]{:<7} ", variant.label()))];
+    for c in &preview {
+        spans.push(Span::styled(
+            "██",
+            Style::default().fg(Color::Rgb(c.r, c.g, c.b)),
+        ));
+    }
+    if is_selected {
+        spans.push(Span::styled(" ◄", Style::default().fg(Color::Yellow)));
+    }
+    spans
+}
+
+fn draw_accent_select_overlay(f: &mut Frame, app: &TuiApp) {
+    let area = centered_rect(70, 90, f.area());
+
+    let accents: &[(&str, AccentColor)] = &[
+        ("Blue", AccentColor::Blue),
+        ("Green", AccentColor::Green),
+        ("Yellow", AccentColor::Yellow),
+        ("Red", AccentColor::Red),
+        ("Purple", AccentColor::Purple),
+    ];
+
+    let mut lines = vec![Line::from(""), Line::from("  Select an accent palette:")];
+
+    for (color_name, accent) in accents {
+        // Color header with first two variants on one line, next two on the next
+        let variants: Vec<(char, AccentVariant)> = ACCENT_OPTIONS
+            .iter()
+            .filter(|(_, a, _)| a == accent)
+            .map(|&(k, _, v)| (k, v))
+            .collect();
+
+        lines.push(Line::from(Span::styled(
+            format!("  {color_name}:"),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )));
+
+        // Two variants per row
+        for pair in variants.chunks(2) {
+            let mut spans = vec![Span::raw("   ")];
+            for (i, &(key, variant)) in pair.iter().enumerate() {
+                if i > 0 {
+                    spans.push(Span::raw("  "));
+                }
+                let selected = app.accent == Some(*accent) && app.accent_variant == variant;
+                spans.extend(accent_swatch_spans(
+                    key, *accent, variant, app.mode, selected,
+                ));
+            }
+            lines.push(Line::from(spans));
+        }
+    }
+
+    // Gray option
+    lines.push(Line::from(Span::styled(
+        "  Gray:",
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    )));
+    let mut gray_spans = vec![Span::raw("   ")];
+    let gray_selected = app.accent == Some(AccentColor::Gray);
+    gray_spans.extend(accent_swatch_spans(
+        GRAY_ACCENT_KEY,
+        AccentColor::Gray,
+        AccentVariant::Vibrant,
+        app.mode,
+        gray_selected,
+    ));
+    lines.push(Line::from(gray_spans));
+
+    lines.push(Line::from(""));
+    lines.push(Line::from("  [0] No accent (multi-hue)"));
+    lines.push(Line::from("  Press a letter to select | Esc: Cancel"));
+
+    let popup = Paragraph::new(lines)
+        .block(Block::bordered().title(" Accent Palette "))
         .style(Style::default().bg(Color::Black).fg(Color::White));
     f.render_widget(Clear, area);
     f.render_widget(popup, area);

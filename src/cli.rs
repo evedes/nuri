@@ -50,10 +50,61 @@ pub struct Args {
     /// Error instead of overwriting when installing an existing theme
     #[arg(long)]
     pub no_clobber: bool,
+
+    /// Generate a monochromatic palette using shades of a single accent color
+    #[arg(long, value_enum)]
+    pub accent: Option<AccentColor>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum ThemeMode {
     Dark,
     Light,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum AccentColor {
+    Blue,
+    Green,
+    Yellow,
+    Red,
+    Purple,
+    Gray,
+}
+
+/// Style variants for monochromatic accent palettes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccentVariant {
+    Vibrant,
+    Muted,
+    Dark,
+    Pastel,
+}
+
+impl AccentVariant {
+    pub const ALL: [AccentVariant; 4] = [
+        AccentVariant::Vibrant,
+        AccentVariant::Muted,
+        AccentVariant::Dark,
+        AccentVariant::Pastel,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            AccentVariant::Vibrant => "Vibrant",
+            AccentVariant::Muted => "Muted",
+            AccentVariant::Dark => "Dark",
+            AccentVariant::Pastel => "Pastel",
+        }
+    }
+
+    /// (lightness_offset, chroma_scale) applied to base monochromatic params.
+    pub fn modifiers(self) -> (f32, f32) {
+        match self {
+            AccentVariant::Vibrant => (0.0, 1.3),
+            AccentVariant::Muted => (0.05, 0.6),
+            AccentVariant::Dark => (-0.10, 1.0),
+            AccentVariant::Pastel => (0.10, 0.5),
+        }
+    }
 }

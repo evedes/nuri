@@ -2,8 +2,9 @@ use anyhow::{bail, Result};
 use clap::Parser;
 
 use nuri::backends::{get_backend, ghostty, Target, ThemeBackend};
+use nuri::cli::AccentVariant;
 use nuri::cli::Args;
-use nuri::pipeline::assign::assign_slots;
+use nuri::pipeline::assign::assign_slots_with_accent;
 use nuri::pipeline::contrast::enforce_contrast;
 use nuri::pipeline::detect::detect_mode;
 use nuri::pipeline::extract::{extract_colors, load_and_prepare};
@@ -42,7 +43,7 @@ fn main() -> Result<()> {
     let mode = args.mode.unwrap_or_else(|| detect_mode(&pixels));
 
     // 4. Assign colors to ANSI palette slots
-    let mut palette = assign_slots(&colors, mode);
+    let mut palette = assign_slots_with_accent(&colors, mode, args.accent, AccentVariant::Vibrant);
 
     // 5. Enforce WCAG contrast minimums
     enforce_contrast(&mut palette, min_contrast);
@@ -56,6 +57,7 @@ fn main() -> Result<()> {
         let mut tui_app =
             tui::TuiApp::new(palette, colors, args.image, mode, name, pixels, args.colors);
         tui_app.set_targets(targets);
+        tui_app.set_accent(args.accent);
         return tui::run(tui_app);
     }
 

@@ -1,6 +1,6 @@
 use palette::Oklch;
 
-use crate::cli::ThemeMode;
+use crate::cli::{AccentColor, AccentVariant, ThemeMode};
 use crate::color::Color;
 use crate::pipeline::extract::ExtractedColor;
 
@@ -54,12 +54,26 @@ fn hue_distance(a: f32, b: f32) -> f32 {
 
 /// Map extracted colors to the 16 ANSI palette slots plus special colors.
 pub fn assign_slots(colors: &[ExtractedColor], mode: ThemeMode) -> AnsiPalette {
+    assign_slots_with_accent(colors, mode, None, AccentVariant::Vibrant)
+}
+
+/// Map extracted colors to ANSI palette slots, optionally using a monochromatic accent.
+pub fn assign_slots_with_accent(
+    colors: &[ExtractedColor],
+    mode: ThemeMode,
+    accent: Option<AccentColor>,
+    variant: AccentVariant,
+) -> AnsiPalette {
     let mut slots = [Color::new(0, 0, 0); 16];
 
     let oklch_colors: Vec<Oklch> = colors.iter().map(|ec| ec.color.to_oklch()).collect();
 
-    assign_accents(&oklch_colors, &mut slots);
-    assign_base_colors(&oklch_colors, mode, &mut slots);
+    if let Some(accent_color) = accent {
+        assign_monochromatic_accents(&oklch_colors, accent_color, variant, mode, &mut slots);
+    } else {
+        assign_accents(&oklch_colors, &mut slots);
+    }
+    assign_base_colors(&oklch_colors, mode, accent, &mut slots);
     assign_bright_variants(&mut slots);
     derive_special_colors(slots, mode)
 }
@@ -92,6 +106,107 @@ fn assign_accents(candidates: &[Oklch], slots: &mut [Color; 16]) {
     }
 }
 
+/// Lightness offsets for each ANSI accent slot in monochromatic mode.
+/// Spreads slots across different lightness levels to keep them distinguishable.
+const MONO_SLOT_PARAMS: [(usize, f32, f32); 6] = [
+    (1, 0.55, 0.18), // Red    → darkest accent
+    (2, 0.65, 0.16), // Green  → mid
+    (3, 0.75, 0.14), // Yellow → lighter
+    (4, 0.50, 0.20), // Blue   → deep
+    (5, 0.60, 0.17), // Magenta→ mid-low
+    (6, 0.70, 0.15), // Cyan   → mid-high
+];
+
+/// Resolve the hue angle for an accent color (arbitrary for Gray, since chroma is 0).
+fn accent_hue(accent: AccentColor) -> f32 {
+    match accent {
+        AccentColor::Blue => 260.0,
+        AccentColor::Green => 145.0,
+        AccentColor::Yellow => 90.0,
+        AccentColor::Red => 25.0,
+        AccentColor::Purple => 325.0,
+        AccentColor::Gray => 0.0,
+    }
+}
+
+/// Whether this accent is achromatic (zero chroma).
+fn accent_is_gray(accent: AccentColor) -> bool {
+    matches!(accent, AccentColor::Gray)
+}
+
+/// Assign all accent slots as shades of a single hue with a style variant.
+fn assign_monochromatic_accents(
+    candidates: &[Oklch],
+    accent: AccentColor,
+    variant: AccentVariant,
+    mode: ThemeMode,
+    slots: &mut [Color; 16],
+) {
+    let hue = accent_hue(accent);
+    let (l_offset, chroma_scale) = variant.modifiers();
+
+    let gray = accent_is_gray(accent);
+
+    // Try to derive base chroma from the image's most chromatic candidate near this hue
+    let base_chroma = if gray {
+        0.0
+    } else {
+        let chromatic: Vec<Oklch> = candidates
+            .iter()
+            .copied()
+            .filter(|c| c.chroma > MIN_CHROMA)
+            .collect();
+        find_closest_by_hue(&chromatic, hue)
+            .map(|c| c.chroma.max(0.10))
+            .unwrap_or(0.15)
+    };
+
+    for &(slot, l, slot_chroma) in &MONO_SLOT_PARAMS {
+        let base_l = l + l_offset;
+        let adjusted_l = if mode == ThemeMode::Light {
+            (base_l - 0.15).max(0.25)
+        } else {
+            base_l.clamp(0.30, 0.90)
+        };
+        let chroma = if gray {
+            0.0
+        } else {
+            (base_chroma * (slot_chroma / 0.15) * chroma_scale).clamp(0.03, 0.30)
+        };
+        slots[slot] = Color::from_oklch(Oklch::new(adjusted_l, chroma, hue));
+    }
+}
+
+/// Generate 6 preview accent colors for a given accent + variant combo.
+/// Used by the TUI overlay to show swatches without running the full pipeline.
+pub fn preview_monochromatic(
+    accent: AccentColor,
+    variant: AccentVariant,
+    mode: ThemeMode,
+) -> [Color; 6] {
+    let hue = accent_hue(accent);
+    let (l_offset, chroma_scale) = variant.modifiers();
+    let gray = accent_is_gray(accent);
+    let base_chroma = 0.15;
+    let mut out = [Color::new(0, 0, 0); 6];
+
+    for (i, &(_slot, l, slot_chroma)) in MONO_SLOT_PARAMS.iter().enumerate() {
+        let base_l = l + l_offset;
+        let adjusted_l = if mode == ThemeMode::Light {
+            (base_l - 0.15).max(0.25)
+        } else {
+            base_l.clamp(0.30, 0.90)
+        };
+        let chroma = if gray {
+            0.0
+        } else {
+            (base_chroma * (slot_chroma / 0.15) * chroma_scale).clamp(0.03, 0.30)
+        };
+        out[i] = Color::from_oklch(Oklch::new(adjusted_l, chroma, hue));
+    }
+    out
+}
+
 /// Find the candidate with the smallest hue distance to `target_hue`.
 fn find_closest_by_hue(candidates: &[Oklch], target_hue: f32) -> Option<Oklch> {
     candidates.iter().copied().min_by(|a, b| {
@@ -101,11 +216,23 @@ fn find_closest_by_hue(candidates: &[Oklch], target_hue: f32) -> Option<Oklch> {
     })
 }
 
+/// Chroma for accent-tinted background/dim slots.
+const ACCENT_BASE_CHROMA: f32 = 0.01;
+/// Chroma for accent-tinted text slots (white, bright white).
+const ACCENT_TEXT_CHROMA: f32 = 0.015;
+
 /// Assign base colors (slots 0, 7, 8, 15) based on theme mode.
 ///
 /// Dark mode: slot 0 = darkest (L ≤ 0.15), slot 15 = lightest (L ~ 0.93).
 /// Light mode: inverted — slot 0 = lightest, slot 15 = darkest.
-fn assign_base_colors(candidates: &[Oklch], mode: ThemeMode, slots: &mut [Color; 16]) {
+///
+/// When a monochromatic accent is active, base slots are tinted with the accent hue.
+fn assign_base_colors(
+    candidates: &[Oklch],
+    mode: ThemeMode,
+    accent: Option<AccentColor>,
+    slots: &mut [Color; 16],
+) {
     let darkest = candidates
         .iter()
         .copied()
@@ -118,55 +245,40 @@ fn assign_base_colors(candidates: &[Oklch], mode: ThemeMode, slots: &mut [Color;
     let dark_base = darkest.unwrap_or(Oklch::new(0.15, 0.0, 0.0));
     let light_base = lightest.unwrap_or(Oklch::new(0.93, 0.0, 0.0));
 
+    // When accent is active, tint base slots with the accent hue (except gray)
+    let (bg_hue, bg_chroma, text_hue, text_chroma) = if let Some(ac) = accent {
+        if accent_is_gray(ac) {
+            (0.0, 0.0, 0.0, 0.0)
+        } else {
+            let h = accent_hue(ac);
+            (h, ACCENT_BASE_CHROMA, h, ACCENT_TEXT_CHROMA)
+        }
+    } else {
+        (
+            f32::from(dark_base.hue),
+            dark_base.chroma.min(BASE_MAX_CHROMA),
+            f32::from(light_base.hue),
+            light_base.chroma.min(TEXT_MAX_CHROMA),
+        )
+    };
+
     match mode {
         ThemeMode::Dark => {
             // Slot 0 (black): darkest candidate, clamped to L ≤ 0.15
-            slots[0] = Color::from_oklch(Oklch::new(
-                dark_base.l.min(0.15),
-                dark_base.chroma.min(BASE_MAX_CHROMA),
-                dark_base.hue,
-            ));
+            slots[0] = Color::from_oklch(Oklch::new(dark_base.l.min(0.15), bg_chroma, bg_hue));
             // Slot 7 (white): light text, L ~ 0.85
-            slots[7] = Color::from_oklch(Oklch::new(
-                0.85,
-                light_base.chroma.min(TEXT_MAX_CHROMA),
-                light_base.hue,
-            ));
+            slots[7] = Color::from_oklch(Oklch::new(0.85, text_chroma, text_hue));
             // Slot 8 (bright black): dim text / comments, L ~ 0.40
-            slots[8] = Color::from_oklch(Oklch::new(
-                0.40,
-                dark_base.chroma.min(BASE_MAX_CHROMA),
-                dark_base.hue,
-            ));
+            slots[8] = Color::from_oklch(Oklch::new(0.40, bg_chroma, bg_hue));
             // Slot 15 (bright white): brightest text, L ~ 0.93
-            slots[15] = Color::from_oklch(Oklch::new(
-                0.93,
-                light_base.chroma.min(TEXT_MAX_CHROMA),
-                light_base.hue,
-            ));
+            slots[15] = Color::from_oklch(Oklch::new(0.93, text_chroma, text_hue));
         }
         ThemeMode::Light => {
             // Inverted: slot 0 = lightest (background), slot 15 = darkest (foreground)
-            slots[0] = Color::from_oklch(Oklch::new(
-                light_base.l.max(0.93),
-                light_base.chroma.min(TEXT_MAX_CHROMA),
-                light_base.hue,
-            ));
-            slots[7] = Color::from_oklch(Oklch::new(
-                0.20,
-                dark_base.chroma.min(TEXT_MAX_CHROMA),
-                dark_base.hue,
-            ));
-            slots[8] = Color::from_oklch(Oklch::new(
-                0.60,
-                light_base.chroma.min(BASE_MAX_CHROMA),
-                light_base.hue,
-            ));
-            slots[15] = Color::from_oklch(Oklch::new(
-                dark_base.l.min(0.15),
-                dark_base.chroma.min(TEXT_MAX_CHROMA),
-                dark_base.hue,
-            ));
+            slots[0] = Color::from_oklch(Oklch::new(light_base.l.max(0.93), text_chroma, text_hue));
+            slots[7] = Color::from_oklch(Oklch::new(0.20, text_chroma, text_hue));
+            slots[8] = Color::from_oklch(Oklch::new(0.60, bg_chroma, bg_hue));
+            slots[15] = Color::from_oklch(Oklch::new(dark_base.l.min(0.15), text_chroma, text_hue));
         }
     }
 }
@@ -371,6 +483,48 @@ mod tests {
                 "slot {i} should not be completely black: {c:?}"
             );
         }
+    }
+
+    #[test]
+    fn monochromatic_blue_all_accents_share_hue() {
+        let palette = assign_slots_with_accent(
+            &diverse_candidates(),
+            ThemeMode::Dark,
+            Some(AccentColor::Blue),
+            AccentVariant::Vibrant,
+        );
+
+        let blue_hue = 260.0;
+        for &slot in &[1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14] {
+            let oklch = palette.slots[slot].to_oklch();
+            let dist = hue_distance(f32::from(oklch.hue), blue_hue);
+            // Tolerance accounts for hue drift from sRGB gamut clamping
+            // (high-chroma blues near 260° are especially prone to drift)
+            assert!(
+                dist < 30.0,
+                "monochromatic slot {slot} hue {:.1}° should be near {blue_hue}°, distance {dist:.1}°",
+                f32::from(oklch.hue)
+            );
+        }
+    }
+
+    #[test]
+    fn monochromatic_slots_have_distinct_lightness() {
+        let palette = assign_slots_with_accent(
+            &diverse_candidates(),
+            ThemeMode::Dark,
+            Some(AccentColor::Green),
+            AccentVariant::Vibrant,
+        );
+
+        let mut lightnesses: Vec<f32> = (1..=6).map(|i| palette.slots[i].to_oklch().l).collect();
+        lightnesses.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        // Check that the range of lightness values spans at least 0.15
+        let range = lightnesses.last().unwrap() - lightnesses.first().unwrap();
+        assert!(
+            range > 0.15,
+            "monochromatic accents should have varied lightness, range was {range:.3}"
+        );
     }
 
     #[test]
