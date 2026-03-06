@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-nuri (塗り — Japanese for "to paint") is a Rust CLI/TUI app that generates color themes from wallpaper images. Supports Ghostty, Zellij, and Neovim backends. See `product-definition/PRD-1.md` for the original Ghostty-only requirements, `product-definition/PRD-2.md` for the multi-backend evolution, and `product-definition/TICKETS-2.md` for Phase 2 implementation tickets.
+nuri (塗り — Japanese for "to paint") is a Rust TUI app that generates color themes from wallpaper images. Supports Ghostty, Zellij, and Neovim backends. See `product-definition/PRD-1.md` for the original Ghostty-only requirements, `product-definition/PRD-2.md` for the multi-backend evolution, and `product-definition/TICKETS-2.md` for Phase 2 implementation tickets.
 
 ## Agent Guidelines
 
@@ -17,10 +17,8 @@ nuri (塗り — Japanese for "to paint") is a Rust CLI/TUI app that generates c
 
 ```bash
 cargo build                                  # Build
-cargo run -- <image> [opts]                  # Run CLI mode (default: ghostty)
-cargo run -- <image> --target zellij         # Output Zellij theme
-cargo run -- <image> --target ghostty,zellij --install  # Install to standard dirs
-cargo run -- <image> --tui                   # Run TUI mode
+cargo run -- <image> [opts]                  # Launch TUI
+cargo run -- <image> --target zellij         # Launch TUI with Zellij target
 cargo test                   # Run all tests
 cargo clippy                 # Lint
 cargo fmt --check            # Check formatting
@@ -30,7 +28,7 @@ cargo fmt --check            # Check formatting
 
 ```
 src/
-  main.rs              # Entry point, CLI dispatch
+  main.rs              # Entry point, launches TUI
   cli.rs               # Clap arg definitions
   pipeline/
     mod.rs

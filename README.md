@@ -34,36 +34,22 @@ cargo install --path .
 
 ## Usage
 
-### CLI mode
-
 ```bash
-# Generate Ghostty theme and print to stdout (default)
+# Launch with default settings
 nuri ~/wallpapers/sunset.jpg
 
-# Target a specific backend
+# Target specific backend(s)
 nuri ~/wallpapers/sunset.jpg --target zellij
-nuri ~/wallpapers/sunset.jpg --target neovim
-
-# Install to each backend's standard config directory
-nuri ~/wallpapers/sunset.jpg --target ghostty,zellij --install
-
-# Write to a specific file
-nuri ~/wallpapers/sunset.jpg -o ~/mytheme.conf
-
-# Preview the palette in your terminal
-nuri ~/wallpapers/sunset.jpg --preview
+nuri ~/wallpapers/sunset.jpg --target ghostty,zellij,neovim
 
 # Force light mode
 nuri ~/wallpapers/sunset.jpg --mode light
+
+# Use a monochromatic accent palette
+nuri ~/wallpapers/sunset.jpg --accent blue
 ```
 
-### TUI mode
-
-```bash
-nuri ~/wallpapers/sunset.jpg --tui
-```
-
-Interactive terminal UI for previewing and tweaking the generated palette before saving. Keybindings:
+nuri launches an interactive TUI for previewing and tweaking the generated palette before saving. Keybindings:
 
 | Key | Action |
 |-----|--------|
@@ -90,13 +76,9 @@ Options:
   -n, --name <NAME>                  Theme name (defaults to image filename)
   -m, --mode <MODE>                  Force dark or light [values: dark, light]
   -t, --target <TARGET>              Backend(s), comma-separated [values: ghostty, zellij, neovim]
-  -o, --output <OUTPUT>              Write theme to file instead of stdout
-      --install                      Install to each backend's standard config directory
-      --no-clobber                   Error instead of overwriting existing themes
-      --preview                      Print colored palette preview
-      --tui                          Launch interactive TUI
   -k, --colors <N>                   K-means clusters [default: 16]
       --min-contrast <RATIO>         Minimum accent contrast ratio [default: 4.5]
+      --accent <COLOR>               Monochromatic palette [values: blue, green, yellow, red, purple, gray]
 ```
 
 ## Development

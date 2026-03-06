@@ -19,25 +19,9 @@ pub struct Args {
     #[arg(short, long, value_enum)]
     pub mode: Option<ThemeMode>,
 
-    /// Write theme to this file instead of stdout
-    #[arg(short, long)]
-    pub output: Option<PathBuf>,
-
     /// Target theme format(s), comma-separated (e.g. ghostty,zellij)
     #[arg(short = 't', long, value_enum, value_delimiter = ',')]
     pub target: Vec<Target>,
-
-    /// Install theme to the target's standard config directory
-    #[arg(long, conflicts_with = "output")]
-    pub install: bool,
-
-    /// Print a colored terminal preview of the palette
-    #[arg(long)]
-    pub preview: bool,
-
-    /// Launch interactive TUI mode
-    #[arg(long)]
-    pub tui: bool,
 
     /// Number of K-means clusters
     #[arg(short = 'k', long = "colors", default_value_t = 16)]
@@ -46,10 +30,6 @@ pub struct Args {
     /// Minimum accent contrast ratio against background
     #[arg(long, default_value_t = 4.5)]
     pub min_contrast: f32,
-
-    /// Error instead of overwriting when installing an existing theme
-    #[arg(long)]
-    pub no_clobber: bool,
 
     /// Generate a monochromatic palette using shades of a single accent color
     #[arg(long, value_enum)]
