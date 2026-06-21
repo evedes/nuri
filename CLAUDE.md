@@ -4,6 +4,16 @@
 
 nuri (塗り — Japanese for "to paint") is a Rust TUI app that generates color themes from wallpaper images. Supports Ghostty, Zellij, and Neovim backends. See `product-definition/PRD-1.md` for the original Ghostty-only requirements, `product-definition/PRD-2.md` for the multi-backend evolution, and `product-definition/TICKETS-2.md` for Phase 2 implementation tickets.
 
+## External Notes — the Multiverse
+
+The user keeps personal notes about nuri (and related projects) in an Obsidian vault at `~/Nextcloud/Multiverse`. Before starting non-trivial work — especially anything touching product direction, positioning, scope, or roadmap decisions — search the vault for relevant context:
+
+```bash
+grep -rli nuri ~/Nextcloud/Multiverse        # find nuri-related notes
+```
+
+The primary note is `~/Nextcloud/Multiverse/1781999011-nuri.md`, which covers the core idea, the color pipeline, positioning vs the wallpaper-theming ecosystem (pywal, wallust, matugen, etc.), and recorded design decisions / next actions. Treat these notes as the source of truth for *why* the project is scoped the way it is; they may contain newer thinking than the docs in this repo.
+
 ## Agent Guidelines
 
 - Only commit or push if I strictly tell you to do so. Never do it on your own. If you want to do it ALWAYS ask first.
