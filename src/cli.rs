@@ -34,6 +34,18 @@ pub struct Args {
     /// Generate a monochromatic palette using shades of a single accent color
     #[arg(long, value_enum)]
     pub accent: Option<AccentColor>,
+
+    /// Print the resolved palette to stdout in this format and exit (skips the TUI).
+    /// Target-agnostic — emits the raw palette so external tools can template any app.
+    #[arg(long, value_enum)]
+    pub format: Option<OutputFormat>,
+}
+
+/// Non-interactive output formats for the resolved palette (the "escape hatch").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum OutputFormat {
+    /// JSON object: theme name, mode, special colors, and the 16 ANSI slots.
+    Json,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]

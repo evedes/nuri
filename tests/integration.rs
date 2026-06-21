@@ -74,25 +74,30 @@ fn create_colorful(path: &Path) {
 }
 
 fn ensure_fixtures() {
-    let dir = fixture_dir();
-    std::fs::create_dir_all(&dir).unwrap();
+    // Tests run in parallel and all call this; a `Once` guarantees fixtures are
+    // generated exactly once, so no test can observe a half-written image file.
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let dir = fixture_dir();
+        std::fs::create_dir_all(&dir).unwrap();
 
-    let dark = dir.join("dark-photo.png");
-    if !dark.exists() {
-        create_dark_photo(&dark);
-    }
-    let light = dir.join("light-photo.png");
-    if !light.exists() {
-        create_light_photo(&light);
-    }
-    let mono = dir.join("monochrome.png");
-    if !mono.exists() {
-        create_monochrome(&mono);
-    }
-    let colorful = dir.join("colorful.png");
-    if !colorful.exists() {
-        create_colorful(&colorful);
-    }
+        let dark = dir.join("dark-photo.png");
+        if !dark.exists() {
+            create_dark_photo(&dark);
+        }
+        let light = dir.join("light-photo.png");
+        if !light.exists() {
+            create_light_photo(&light);
+        }
+        let mono = dir.join("monochrome.png");
+        if !mono.exists() {
+            create_monochrome(&mono);
+        }
+        let colorful = dir.join("colorful.png");
+        if !colorful.exists() {
+            create_colorful(&colorful);
+        }
+    });
 }
 
 /// Run the full pipeline on a fixture image and return serialized theme output.
@@ -385,6 +390,45 @@ fn cli_help_output() {
     assert!(stdout.contains("nuri"));
     assert!(stdout.contains("--mode"));
     assert!(stdout.contains("--min-contrast"));
+}
+
+#[test]
+fn cli_format_json_emits_palette_and_skips_tui() {
+    ensure_fixtures();
+    let bin = cargo_bin();
+    let output = Command::new(&bin)
+        .arg(fixture_dir().join("colorful.png"))
+        .args(["--format", "json"])
+        .output()
+        .expect("failed to run binary");
+
+    assert!(output.status.success(), "json run should exit 0");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Structural checks (no serde dependency in the project).
+    assert!(
+        stdout.trim_start().starts_with('{'),
+        "should be a JSON object"
+    );
+    assert!(stdout.contains("\"mode\""));
+    assert!(stdout.contains("\"special\""));
+    assert!(stdout.contains("\"palette\""));
+
+    // Exactly 16 palette colors.
+    let array = stdout.split("\"palette\": [").nth(1).unwrap();
+    let array = array.split(']').next().unwrap();
+    assert_eq!(
+        array.matches('#').count(),
+        16,
+        "expected 16 palette colors in JSON output"
+    );
+
+    // Balanced braces => well-formed object.
+    assert_eq!(
+        stdout.matches('{').count(),
+        stdout.matches('}').count(),
+        "unbalanced braces in JSON output"
+    );
 }
 
 #[test]

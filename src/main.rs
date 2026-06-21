@@ -33,6 +33,12 @@ fn main() -> Result<()> {
     // 6. Derive theme name
     let name = args.name.unwrap_or_else(|| default_theme_name(&args.image));
 
+    // 6b. Non-interactive escape hatch: print the resolved palette and exit.
+    if let Some(format) = args.format {
+        print!("{}", nuri::output::render(&palette, &name, mode, format));
+        return Ok(());
+    }
+
     // 7. Launch interactive TUI
     let targets = args.target.clone();
     let mut tui_app =

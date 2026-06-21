@@ -47,7 +47,15 @@ nuri ~/wallpapers/sunset.jpg --mode light
 
 # Use a monochromatic accent palette
 nuri ~/wallpapers/sunset.jpg --accent blue
+
+# Print the resolved palette as JSON and exit (no TUI) — pipe it into your own
+# templates to theme apps nuri doesn't natively support
+nuri ~/wallpapers/sunset.jpg --format json
 ```
+
+Grayscale or single-hue wallpapers are detected automatically: instead of
+inventing a saturated rainbow, nuri produces a restrained palette whose accents
+track the ANSI hue positions but stay near-neutral, distinguished by lightness.
 
 nuri launches an interactive TUI for previewing and tweaking the generated palette before saving. Keybindings:
 
@@ -79,6 +87,7 @@ Options:
   -k, --colors <N>                   K-means clusters [default: 16]
       --min-contrast <RATIO>         Minimum accent contrast ratio [default: 4.5]
       --accent <COLOR>               Monochromatic palette [values: blue, green, yellow, red, purple, gray]
+      --format <FORMAT>              Print resolved palette to stdout and exit [values: json]
 ```
 
 ## Development

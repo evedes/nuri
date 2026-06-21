@@ -40,11 +40,12 @@ cargo fmt --check            # Check formatting
 src/
   main.rs              # Entry point, launches TUI
   cli.rs               # Clap arg definitions
+  output.rs            # Non-interactive output (--format json escape hatch)
   pipeline/
     mod.rs
     extract.rs         # Image loading, K-means color extraction
     detect.rs          # Dark/light mode auto-detection
-    assign.rs          # Hue-based ANSI slot assignment (Oklch)
+    assign.rs          # Hue-based ANSI slot assignment (Oklch); low-variance fallback
     contrast.rs        # WCAG contrast enforcement
   backends/
     mod.rs             # ThemeBackend trait, Target enum, get_backend()
@@ -98,6 +99,10 @@ palette = 15=#RRGGBB
 ## Color Pipeline Summary
 
 Image → resize 256x256 → K-means (LAB, K=16) → deduplicate (ΔE<5) → detect dark/light → hue-based slot assignment (Oklch) → bright variants (+0.12 L) → derive special colors → WCAG contrast enforcement (4.5:1 accents, 7:1 foreground, 3:1 bright-black) → serialize.
+
+**Low-variance fallback**: grayscale / monochrome / single-hue images (detected by image max chroma and hue span in `assign.rs`) bypass hue-based accent assignment. Instead the six ANSI hue identities are kept but spread across lightness with chroma clamped to what the image actually contains — so a grayscale wallpaper yields restrained near-neutral accents, never an invented rainbow.
+
+**Escape hatch**: `--format json` runs the full pipeline then prints the resolved palette (name, mode, special colors, 16 ANSI slots) to stdout and exits without the TUI — target-agnostic, for templating apps nuri doesn't natively support. See `src/output.rs`.
 
 ## Contrast Requirements
 

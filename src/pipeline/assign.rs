@@ -70,6 +70,8 @@ pub fn assign_slots_with_accent(
 
     if let Some(accent_color) = accent {
         assign_monochromatic_accents(&oklch_colors, accent_color, variant, mode, &mut slots);
+    } else if is_low_variance(&oklch_colors) {
+        assign_low_variance_accents(&oklch_colors, mode, &mut slots);
     } else {
         assign_accents(&oklch_colors, &mut slots);
     }
@@ -103,6 +105,82 @@ fn assign_accents(candidates: &[Oklch], slots: &mut [Color; 16]) {
             // No chromatic candidates — fully synthetic fallback
             slots[slot] = Color::from_oklch(Oklch::new(0.65, 0.15, target_hue));
         }
+    }
+}
+
+/// Below this maximum Oklch chroma, the image has essentially no color signal
+/// (grayscale / monochrome) and the low-variance fallback is used.
+const ACHROMATIC_MAX_CHROMA: f32 = 0.025;
+
+/// If all chromatic candidates cluster within this hue span (degrees), the image
+/// is a single hue family — also treated as low-variance.
+const LOW_VARIANCE_HUE_SPAN: f32 = 35.0;
+
+/// Chroma ceiling for synthesized low-variance accents: kept muted and never more
+/// than the image actually contains, so we never invent saturation that isn't there.
+const LOW_VARIANCE_MAX_CHROMA: f32 = 0.06;
+
+/// Largest Oklch chroma present across the extracted candidates.
+fn image_max_chroma(candidates: &[Oklch]) -> f32 {
+    candidates.iter().map(|c| c.chroma).fold(0.0, f32::max)
+}
+
+/// Angular span (degrees) covered by a set of hues on the color wheel.
+///
+/// Computed as 360 minus the largest gap between adjacent (sorted) hues, so a
+/// tight cluster yields a small span and hues spread around the wheel yield a
+/// large one. Returns 0 for fewer than two hues.
+fn hue_span(hues: &[f32]) -> f32 {
+    if hues.len() < 2 {
+        return 0.0;
+    }
+    let mut sorted: Vec<f32> = hues.iter().map(|h| h.rem_euclid(360.0)).collect();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let mut max_gap = 0.0_f32;
+    for w in sorted.windows(2) {
+        max_gap = max_gap.max(w[1] - w[0]);
+    }
+    // Wrap-around gap between the last and first hue.
+    let wrap = 360.0 - sorted.last().unwrap() + sorted.first().unwrap();
+    max_gap = max_gap.max(wrap);
+
+    360.0 - max_gap
+}
+
+/// Whether the extracted palette lacks the color variety needed for distinct
+/// hue-based accents — i.e. a grayscale / monochrome / single-hue wallpaper.
+///
+/// This is the failure mode that breaks generic engines (pywal/wallust); nuri
+/// detects it explicitly and routes to [`assign_low_variance_accents`].
+fn is_low_variance(candidates: &[Oklch]) -> bool {
+    if image_max_chroma(candidates) < ACHROMATIC_MAX_CHROMA {
+        return true;
+    }
+    let hues: Vec<f32> = candidates
+        .iter()
+        .filter(|c| c.chroma > MIN_CHROMA)
+        .map(|c| f32::from(c.hue))
+        .collect();
+    !hues.is_empty() && hue_span(&hues) < LOW_VARIANCE_HUE_SPAN
+}
+
+/// Fallback accent assignment for monochrome / low-variance images.
+///
+/// Keeps the six ANSI hue *identities* (so the terminal stays usable for syntax
+/// highlighting, git, ls) but spreads them across lightness and clamps chroma to
+/// what the image actually contains. A grayscale wallpaper therefore yields
+/// restrained, near-neutral accents distinguishable by brightness — never an
+/// invented rainbow. This is the "semantic correctness over coverage" rule.
+fn assign_low_variance_accents(candidates: &[Oklch], mode: ThemeMode, slots: &mut [Color; 16]) {
+    let chroma = image_max_chroma(candidates).min(LOW_VARIANCE_MAX_CHROMA);
+    for (&(slot, hue), &(_, base_l, _)) in TARGET_HUES.iter().zip(MONO_SLOT_PARAMS.iter()) {
+        let l = if mode == ThemeMode::Light {
+            (base_l - 0.15).max(0.25)
+        } else {
+            base_l.clamp(0.30, 0.90)
+        };
+        slots[slot] = Color::from_oklch(Oklch::new(l, chroma, hue));
     }
 }
 
@@ -535,5 +613,97 @@ mod tests {
             let _ = color.to_hex();
             let _ = format!("slot {i}: {color}");
         }
+    }
+
+    // --- low-variance / monochrome fallback ---
+
+    fn grayscale_candidates() -> Vec<ExtractedColor> {
+        vec![
+            make_extracted(0.10, 0.0, 0.0, 0.30),
+            make_extracted(0.35, 0.0, 0.0, 0.20),
+            make_extracted(0.60, 0.0, 0.0, 0.20),
+            make_extracted(0.88, 0.0, 0.0, 0.30),
+        ]
+    }
+
+    fn to_oklch_vec(colors: &[ExtractedColor]) -> Vec<Oklch> {
+        colors.iter().map(|c| c.color.to_oklch()).collect()
+    }
+
+    #[test]
+    fn grayscale_detected_as_low_variance() {
+        assert!(is_low_variance(&to_oklch_vec(&grayscale_candidates())));
+    }
+
+    #[test]
+    fn single_hue_detected_as_low_variance() {
+        // Several blues clustered tightly around 260°.
+        let colors = vec![
+            make_extracted(0.40, 0.10, 255.0, 0.3),
+            make_extracted(0.55, 0.12, 262.0, 0.3),
+            make_extracted(0.70, 0.09, 268.0, 0.2),
+            make_extracted(0.20, 0.02, 258.0, 0.2),
+        ];
+        assert!(is_low_variance(&to_oklch_vec(&colors)));
+    }
+
+    #[test]
+    fn diverse_not_detected_as_low_variance() {
+        assert!(!is_low_variance(&to_oklch_vec(&diverse_candidates())));
+    }
+
+    #[test]
+    fn monochrome_accents_are_muted() {
+        // A grayscale wallpaper must not produce an invented rainbow.
+        let palette = assign_slots(&grayscale_candidates(), ThemeMode::Dark);
+        for slot in 1..=6 {
+            let chroma = palette.slots[slot].to_oklch().chroma;
+            assert!(
+                chroma <= LOW_VARIANCE_MAX_CHROMA + 0.02,
+                "slot {slot} chroma {chroma:.3} should stay near-neutral for a grayscale image"
+            );
+        }
+    }
+
+    #[test]
+    fn monochrome_accents_distinguishable_by_lightness() {
+        let palette = assign_slots(&grayscale_candidates(), ThemeMode::Dark);
+        let mut ls: Vec<f32> = (1..=6).map(|i| palette.slots[i].to_oklch().l).collect();
+        ls.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let range = ls.last().unwrap() - ls.first().unwrap();
+        assert!(
+            range > 0.15,
+            "monochrome accents should still vary in lightness, range was {range:.3}"
+        );
+    }
+
+    #[test]
+    fn monochrome_keeps_ansi_hue_identities() {
+        // Even muted, each slot should sit near its ANSI target hue so terminal
+        // semantics (red/green/blue/...) survive when the image has faint color.
+        let tinted = vec![
+            make_extracted(0.30, 0.0, 0.0, 0.4),
+            make_extracted(0.50, 0.03, 250.0, 0.3), // faint blue tint
+            make_extracted(0.85, 0.0, 0.0, 0.3),
+        ];
+        let palette = assign_slots(&tinted, ThemeMode::Dark);
+        for &(slot, target_hue) in &TARGET_HUES {
+            let hue = f32::from(palette.slots[slot].to_oklch().hue);
+            let dist = hue_distance(hue, target_hue);
+            assert!(
+                dist < 20.0,
+                "slot {slot} hue {hue:.1}° should track ANSI target {target_hue}°, dist {dist:.1}°"
+            );
+        }
+    }
+
+    #[test]
+    fn hue_span_tight_cluster_is_small() {
+        assert!(hue_span(&[250.0, 255.0, 262.0]) < 35.0);
+    }
+
+    #[test]
+    fn hue_span_spread_is_large() {
+        assert!(hue_span(&[25.0, 145.0, 260.0]) > 100.0);
     }
 }
